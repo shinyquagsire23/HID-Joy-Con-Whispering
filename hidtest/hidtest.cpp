@@ -12,6 +12,8 @@
 // Uncomment for spam or SPI dumping
 //#define DEBUG_PRINT
 //#define DUMP_SPI
+//#define REPLAY
+#define INPUT_LOOP
 
 void hex_dump(unsigned char *buf, int len)
 {
@@ -26,7 +28,7 @@ void hid_exchange(hid_device *handle, unsigned char *buf, int len)
     
     hid_write(handle, buf, len);
 
-	int res = hid_read(handle, buf, 65);
+	int res = hid_read(handle, buf, 0x41);
 #ifdef DEBUG_PRINT
 	hex_dump(buf, 0x40);
 #endif
@@ -169,6 +171,38 @@ int main(int argc, char* argv[])
 	spi_flash_dump(handle_r, "right_joycon_dump.bin");
 #endif
 	
+// Replays a string of hex values (ie 80 92 .. ..) separated by newlines
+#ifdef REPLAY
+	ssize_t read;
+	char *line;
+	size_t len = 0;
+	FILE *replay = fopen("replay.txt", "rb");
+	hid_set_nonblocking(handle_l, 1);
+	while ((read = getline(&line, &len, replay)) > 0) {
+	    int i = 0;
+	    
+	    memset(buf_l, 0, 0x40);
+	    
+	    char *line_temp = line;
+	    while(i < 0x40)
+	    {
+	        buf_l[i++] = strtol(line_temp, &line_temp, 16);
+	    }
+	    if(buf_l[8] == 0x1f) continue; //Cull out input packets
+
+        printf("Sent: ");
+        hex_dump(buf_l, 0x40);
+        memcpy(buf_r, buf_l, 0x40);
+	    hid_exchange(handle_l, buf_l, 0x40);
+	    //hid_exchange(handle_r, buf_r, 0x40);
+	    printf("Got:  ");
+	    hex_dump(buf_l, 0x40);
+	    printf("\n");
+	}
+	hid_set_nonblocking(handle_l, 0);
+#endif
+	
+#ifdef INPUT_LOOP
 	printf("Start input poll loop\n");
 	
 	unsigned long last = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
@@ -189,6 +223,7 @@ int main(int argc, char* argv[])
 	    printf("            right ");
 	    hex_dump(buf_r, 0x3D);
     }
+#endif
     
     hid_close(handle_l);
     hid_close(handle_r);
