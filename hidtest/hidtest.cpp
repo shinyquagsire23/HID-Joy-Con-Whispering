@@ -9,6 +9,11 @@
 #include <cstring>
 #include <hidapi/hidapi.h>
 
+#define JOYCON_L_BT (0x2006)
+#define JOYCON_R_BT (0x2007)
+#define PRO_CONTROLLER (0x2009)
+#define JOYCON_CHARGING_GRIP (0x200e)
+
 // Uncomment for spam or SPI dumping
 //#define DEBUG_PRINT
 //#define DUMP_SPI
@@ -81,7 +86,7 @@ int joycon_init(hid_device *handle, const char *name)
     unsigned char buf[0x40];
     memset(buf, 0, 0x40);
 
-    //Get MAC Left
+    // Get MAC Left
 	memset(buf, 0x00, 0x40);
 	buf[0] = 0x80;
 	buf[1] = 0x01;
@@ -96,29 +101,29 @@ int joycon_init(hid_device *handle, const char *name)
 	{
 	    printf("Found %s, MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", name, buf[9], buf[8], buf[7], buf[6], buf[5], buf[4]);
 	}
-		
-	//Do handshaking
+	
+	// Do handshaking
 	memset(buf, 0x00, 0x40);
 	buf[0] = 0x80;
 	buf[1] = 0x02;
 	hid_exchange(handle, buf, 0x2);
 	
+#ifndef WEIRD_VIBRATION_TEST	
 	printf("Switching baudrate...\n");
 	
 	// Switch baudrate to 3Mbit
-#ifndef WEIRD_VIBRATION_TEST
 	memset(buf, 0x00, 0x40);
 	buf[0] = 0x80;
 	buf[1] = 0x03;
 	hid_exchange(handle, buf, 0x2);
 	
-	//Do handshaking again at new baudrate so the firmware pulls pin 3 low?
+	// Do handshaking again at new baudrate so the firmware pulls pin 3 low?
 	memset(buf, 0x00, 0x40);
 	buf[0] = 0x80;
 	buf[1] = 0x02;
 	hid_exchange(handle, buf, 0x2);
 	
-	//Only talk HID from now on
+	// Only talk HID from now on
 	memset(buf, 0x00, 0x40);
 	buf[0] = 0x80;
 	buf[1] = 0x04;
@@ -147,7 +152,7 @@ int main(int argc, char* argv[])
 	unsigned char* buf[2] = {0};
 	hid_device *handle_l = 0, *handle_r = 0;
 	struct hid_device_info *devs, *dev_iter;
-	bool pro_controller = false;
+	bool charging_grip = false;
 
 	res = hid_init();
 
@@ -157,16 +162,60 @@ int main(int argc, char* argv[])
 	{
 		if(dev_iter->interface_number == 0)
 		{
-		    handle_r = hid_open_path(dev_iter->path);
-		    buf[0] = (unsigned char*)malloc(0x40);
-		    memset(buf[0], 0, 0x40);
+		    hid_device *handle = hid_open_path(dev_iter->path);
+		    unsigned char* buffer = (unsigned char*)malloc(0x40);
+		    memset(buffer, 0, 0x40);
 		    
-		    if(joycon_init(handle_r, dev_iter->product_id == 0x200e ? "Joy-Con (R)" : "Pro Controller"))
-		        handle_r = NULL;
+		    const char *name = "none";
+		    switch(dev_iter->product_id)
+		    {
+		        case JOYCON_CHARGING_GRIP:
+		            name = "Joy-Con (R)";
+		            charging_grip = true;
 
-		    pro_controller = (dev_iter->product_id != 0x200e); //TODO idk about this
+		            handle_r = handle;
+		            buf[0] = buffer;
+		            break;
+		        case PRO_CONTROLLER:
+		            name = "Pro Controller";
+
+		            handle_r = handle;
+		            buf[0] = buffer;
+		            break;
+		        case JOYCON_L_BT:
+		            name = "Joy-Con (L)";
+
+		            handle_l = handle;
+		            buf[1] = buffer;
+		            break;
+		        case JOYCON_R_BT:
+		            name = "Joy-Con (R)";
+
+		            handle_r = handle;
+		            buf[0] = buffer;
+		            break;
+		    }
+		    
+		    if(joycon_init(handle, name))
+		    {
+		        hid_close(handle);
+		        if(dev_iter->product_id != JOYCON_L_BT)
+		        {
+		            handle_r = NULL;
+
+		            free(buf[0]);
+		            buf[0] = NULL;
+		        }
+		        else
+		        {
+		            handle_l = NULL;
+
+		            free(buf[1]);
+		            buf[1] = NULL;
+		        }
+		    }
 		}
-		else if(dev_iter->interface_number == 1)
+		else if(dev_iter->interface_number == 1) // Only exists for the charging grip
 		{
 		    handle_l = hid_open_path(dev_iter->path);
 		    buf[1] = (unsigned char*)malloc(0x40);
@@ -183,13 +232,14 @@ int main(int argc, char* argv[])
 	if(!handle_r)
 	{
 	    printf("Failed to get handle for interface 0 (right Joy-Con or Pro Controller), exiting...\n");
-	    //return -1;
+	    return -1;
 	}
 	
 	// Only missing one half by this point
-	if(!handle_l && !pro_controller)
+	if(!handle_l && charging_grip)
 	{
 	    printf("Could not get handles for both Joy-Con! Exiting...");
+	    return -1;
 	}
 	
 #ifdef DUMP_SPI
@@ -215,7 +265,7 @@ int main(int argc, char* argv[])
 	    {
 	        buf[0][i++] = strtol(line_temp, &line_temp, 16);
 	    }
-	    if(buf[0][8] == 0x1f) continue; //Cull out input packets
+	    if(buf[0][8] == 0x1f) continue; // Cull out input packets
 
         printf("Sent: ");
         hex_dump(buf[0], 0x40);
@@ -224,7 +274,6 @@ int main(int argc, char* argv[])
             memcpy(buf[1], buf[0], 0x40);
             
 	    hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], 0x40);
-	    //hid_exchange(handle_r, buf_r, 0x40);
 	    printf("Got:  ");
 	    hex_dump(buf[0], 0x40);
 	    printf("\n");
