@@ -72,13 +72,33 @@ void spi_flash_dump(hid_device *handle, char *out_path)
     unsigned char spi_read[0x39] = {0x80, 0x92, 0x0, 0x31, 0x0, 0x0, 0xd4, 0xe6, 0x1, 0xc, 0x0, 0x1, 0x40, 0x40, 0x0, 0x1, 0x40, 0x40, 0x10, 0x00, 0x0, 0x0, 0x0, 0x1C, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 	
 	FILE *dump = fopen(out_path, "wb");
-	for(*(uint32_t*)(&spi_read[0x13]) = 0; *(uint32_t*)(&spi_read[0x13]) < 0x80000; *(uint32_t*)(&spi_read[0x13]) += 0x1C)
+    if(dump == NULL)
+    {
+        printf("Failed to open dump file %s, aborting...\n", out_path);
+        return;
+    }
+    
+    uint32_t* offset = (uint32_t*)(&spi_read[0x13]);
+	for(*offset = 0; *offset < 0x80000; *offset += 0x1C)
 	{
-	    memcpy(buf, spi_read, 0x39);
-	    hid_exchange(handle, buf, 0x39);
+        // HACK/TODO: hid_exchange loves to return data from the wrong addr, or 0x30 (NACK?) packets
+        // so let's make sure our returned data is okay before writing
+        while(1)
+        {
+            memcpy(buf, spi_read, 0x39);
+            hid_exchange(handle, buf, 0x39);
+            
+            // sanity-check our data, loop if it's not good
+            if((buf[0] == 0x81) && (*(uint32_t*)&buf[0x19] == *offset))
+                break;
+        }
 	    
 	    fwrite(buf + 0x1E * sizeof(char), 0x1C, 1, dump);
+        
+        if((*offset & 0xFF) == 0) // less spam
+            printf("\rDumped 0x%05X of 0x80000", *offset);
 	}
+    printf("\rDumped 0x80000 of 0x80000\n");
 	fclose(dump);
 }
 
@@ -264,14 +284,14 @@ int main(int argc, char* argv[])
 	// Only missing one half by this point
 	if(!handle_l && charging_grip)
 	{
-	    printf("Could not get handles for both Joy-Con in grip! Exiting...");
+	    printf("Could not get handles for both Joy-Con in grip! Exiting...\n");
 	    return -1;
 	}
 	
     // controller init is complete at this point
     
 #ifdef DUMP_SPI
-	printf("Dumping controller SPI flashes...");
+	printf("Dumping controller SPI flashes...\n");
 	if(handle_l)
 	    spi_flash_dump(handle_l, "left_joycon_dump.bin");
 	spi_flash_dump(handle_r, "right_joycon_dump.bin");
