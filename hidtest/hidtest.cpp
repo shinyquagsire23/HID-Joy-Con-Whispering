@@ -13,6 +13,7 @@
 #define JOYCON_R_BT (0x2007)
 #define PRO_CONTROLLER (0x2009)
 #define JOYCON_CHARGING_GRIP (0x200e)
+unsigned short product_ids[] = {JOYCON_L_BT, JOYCON_R_BT, PRO_CONTROLLER, JOYCON_CHARGING_GRIP};
 
 // Uncomment for spam or SPI dumping
 //#define DEBUG_PRINT
@@ -34,7 +35,7 @@ void hid_exchange(hid_device *handle, unsigned char *buf, int len)
     
     hid_write(handle, buf, len);
 
-	int res = hid_read(handle, buf, 0x41);
+	int res = hid_read(handle, buf, 0x40);
 #ifdef DEBUG_PRINT
 	hex_dump(buf, 0x40);
 #endif
@@ -81,7 +82,7 @@ void spi_flash_dump(hid_device *handle, char *out_path)
 	fclose(dump);
 }
 
-int joycon_init(hid_device *handle, const char *name)
+int joycon_init(hid_device *handle, const wchar_t *name)
 {
     unsigned char buf[0x40];
     memset(buf, 0, 0x40);
@@ -94,24 +95,24 @@ int joycon_init(hid_device *handle, const char *name)
 	
 	if(buf[2] == 0x3)
 	{
-	    printf("%s disconnected!\n", name);
+	    printf("%ls disconnected!\n", name);
 	    return -1;
 	}
 	else
 	{
-	    printf("Found %s, MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", name, buf[9], buf[8], buf[7], buf[6], buf[5], buf[4]);
+	    printf("Found %ls, MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", name, buf[9], buf[8], buf[7], buf[6], buf[5], buf[4]);
 	}
-	
+		
 	// Do handshaking
 	memset(buf, 0x00, 0x40);
 	buf[0] = 0x80;
 	buf[1] = 0x02;
 	hid_exchange(handle, buf, 0x2);
 	
-#ifndef WEIRD_VIBRATION_TEST	
 	printf("Switching baudrate...\n");
 	
 	// Switch baudrate to 3Mbit
+#ifndef WEIRD_VIBRATION_TEST
 	memset(buf, 0x00, 0x40);
 	buf[0] = 0x80;
 	buf[1] = 0x03;
@@ -130,10 +131,12 @@ int joycon_init(hid_device *handle, const char *name)
 	hid_exchange(handle, buf, 0x2);
 #endif
 	
+    printf("Successfully initialized %ls!\n", name);
+    
 	return 0;
 }
 
-void joycon_deinit(hid_device *handle, char *name)
+void joycon_deinit(hid_device *handle, const wchar_t *name)
 {
     unsigned char buf[0x40];
     memset(buf, 0x00, 0x40);
@@ -143,107 +146,132 @@ void joycon_deinit(hid_device *handle, char *name)
 	buf[1] = 0x05;
 	hid_exchange(handle, buf, 0x2);
 	
-	printf("Deinitialized %s\n", name);
+	printf("Deinitialized %ls\n", name);
+}
+
+void device_print(struct hid_device_info *dev)
+{
+    printf("USB device info:\n  vid: 0x%04hX pid: 0x%04hX\n  path: %s\n  serial_number: %ls\n  interface_number: %d\n",
+        dev->vendor_id, dev->product_id, dev->path, dev->serial_number, dev->interface_number);
+    printf("  Manufacturer: %ls\n", dev->manufacturer_string);
+    printf("  Product:      %ls\n\n", dev->product_string);
 }
 
 int main(int argc, char* argv[])
 {
 	int res;
-	unsigned char* buf[2] = {0};
+	unsigned char buf[2][0x40] = {0};
 	hid_device *handle_l = 0, *handle_r = 0;
+    const wchar_t *device_name = L"none";
 	struct hid_device_info *devs, *dev_iter;
 	bool charging_grip = false;
+    
+    setbuf(stdout, NULL); // turn off stdout buffering for test reasons
 
 	res = hid_init();
+    if(res)
+    {
+        printf("Failed to open hid library! Exiting...\n");
+        return -1;
+    }
 
-	devs = hid_enumerate(0x057e, 0x200e); //TODO: Pro Controller? Will probably need changes to init...
-	dev_iter = devs;
-	while (dev_iter)
-	{
-		if(dev_iter->interface_number == 0)
-		{
-		    hid_device *handle = hid_open_path(dev_iter->path);
-		    unsigned char* buffer = (unsigned char*)malloc(0x40);
-		    memset(buffer, 0, 0x40);
-		    
-		    const char *name = "none";
-		    switch(dev_iter->product_id)
-		    {
-		        case JOYCON_CHARGING_GRIP:
-		            name = "Joy-Con (R)";
-		            charging_grip = true;
+    // iterate thru all the valid product ids and try and initialize controllers
+    for(int i = 0; i < sizeof(product_ids); i++)
+    {
+        devs = hid_enumerate(0x057E, product_ids[i]);
+        dev_iter = devs;
+        while(dev_iter)
+        {
+            
+            // break out if the current handle is already used
+            if(dev_iter->product_id != JOYCON_L_BT && handle_r)
+                break;
+            else if(dev_iter->product_id == JOYCON_L_BT && handle_l)
+                break;
+            
+            device_print(dev_iter);
+            
+            // on windows this will be -1 for devices with one interface
+            if(dev_iter->interface_number == 0 || dev_iter->interface_number == -1)
+            {
+                hid_device *handle = hid_open_path(dev_iter->path);
+                if(handle == NULL)
+                {
+                    printf("Failed to open controller at %ls, continuing...\n", dev_iter->path);
+                    dev_iter = dev_iter->next;
+                    continue;
+                }
+                
+                switch(dev_iter->product_id)
+                {
+                    case JOYCON_CHARGING_GRIP:
+                        device_name = L"Joy-Con (R)";
+                        charging_grip = true;
 
-		            handle_r = handle;
-		            buf[0] = buffer;
-		            break;
-		        case PRO_CONTROLLER:
-		            name = "Pro Controller";
+                        handle_r = handle;
+                        break;
+                    case PRO_CONTROLLER:
+                        device_name = L"Pro Controller";
 
-		            handle_r = handle;
-		            buf[0] = buffer;
-		            break;
-		        case JOYCON_L_BT:
-		            name = "Joy-Con (L)";
+                        handle_r = handle;
+                        break;
+                    case JOYCON_L_BT:
+                        device_name = L"Joy-Con (L)";
 
-		            handle_l = handle;
-		            buf[1] = buffer;
-		            break;
-		        case JOYCON_R_BT:
-		            name = "Joy-Con (R)";
+                        handle_l = handle;
+                        break;
+                    case JOYCON_R_BT:
+                        device_name = L"Joy-Con (R)";
 
-		            handle_r = handle;
-		            buf[0] = buffer;
-		            break;
-		    }
-		    
-		    if(joycon_init(handle, name))
-		    {
-		        hid_close(handle);
-		        if(dev_iter->product_id != JOYCON_L_BT)
-		        {
-		            handle_r = NULL;
-
-		            free(buf[0]);
-		            buf[0] = NULL;
-		        }
-		        else
-		        {
-		            handle_l = NULL;
-
-		            free(buf[1]);
-		            buf[1] = NULL;
-		        }
-		    }
-		}
-		else if(dev_iter->interface_number == 1) // Only exists for the charging grip
-		{
-		    handle_l = hid_open_path(dev_iter->path);
-		    buf[1] = (unsigned char*)malloc(0x40);
-		    memset(buf[1], 0, 0x40);
-		    
-		    if(joycon_init(handle_l, "Joy-Con (L)"))
-		        handle_l = NULL;
-		}
-
-		dev_iter = dev_iter->next;
-	}
-	hid_free_enumeration(devs);
+                        handle_r = handle;
+                        break;
+                }
+                
+                if(joycon_init(handle, device_name))
+                {
+                    hid_close(handle);
+                    if(dev_iter->product_id != JOYCON_L_BT)
+                        handle_r = NULL;
+                    else
+                        handle_l = NULL;
+                }
+            }
+            // Only exists for left Joy-Con in the charging grip
+            else if(dev_iter->interface_number == 1)
+            {
+                handle_l = hid_open_path(dev_iter->path);
+                if(handle_l == NULL)
+                {
+                    printf("Failed to open controller at %ls, continuing...\n", dev_iter->path);
+                    dev_iter = dev_iter->next;
+                    continue;
+                }
+                
+                if(joycon_init(handle_l, L"Joy-Con (L)"))
+                    handle_l = NULL;
+            }
+            dev_iter = dev_iter->next;
+        }
+        hid_free_enumeration(devs);
+    }
 	
 	if(!handle_r)
 	{
-	    printf("Failed to get handle for interface 0 (right Joy-Con or Pro Controller), exiting...\n");
+	    printf("Failed to get handle for right Joy-Con or Pro Controller, exiting...\n");
 	    return -1;
 	}
 	
 	// Only missing one half by this point
 	if(!handle_l && charging_grip)
 	{
-	    printf("Could not get handles for both Joy-Con! Exiting...");
+	    printf("Could not get handles for both Joy-Con in grip! Exiting...");
 	    return -1;
 	}
 	
+    // controller init is complete at this point
+    
 #ifdef DUMP_SPI
-	printf("Dumping Joy-Con SPI flashes...");
+	printf("Dumping controller SPI flashes...");
 	if(handle_l)
 	    spi_flash_dump(handle_l, "left_joycon_dump.bin");
 	spi_flash_dump(handle_r, "right_joycon_dump.bin");
@@ -346,13 +374,13 @@ int main(int argc, char* argv[])
 
     if(handle_l)
     {
-        joycon_deinit(handle_l, "Joy-Con (L)");
+        joycon_deinit(handle_l, L"Joy-Con (L)");
         hid_close(handle_l);
     }
     
     if(handle_r)
     {
-        joycon_deinit(handle_r, "Joy-Con (R)");
+        joycon_deinit(handle_r, device_name);
         hid_close(handle_r);
     }
 
