@@ -24,8 +24,8 @@ unsigned short product_ids[] = {JOYCON_L_BT, JOYCON_R_BT, PRO_CONTROLLER, JOYCON
 
 void hex_dump(unsigned char *buf, int len)
 {
-	for (int i = 0; i < len; i++)
-		printf("%02x ", buf[i]);
+    for (int i = 0; i < len; i++)
+        printf("%02x ", buf[i]);
     printf("\n");
 }
 
@@ -35,9 +35,9 @@ void hid_exchange(hid_device *handle, unsigned char *buf, int len)
     
     hid_write(handle, buf, len);
 
-	int res = hid_read(handle, buf, 0x40);
+    int res = hid_read(handle, buf, 0x40);
 #ifdef DEBUG_PRINT
-	hex_dump(buf, 0x40);
+    hex_dump(buf, 0x40);
 #endif
 }
 
@@ -58,9 +58,9 @@ void hid_dual_exchange(hid_device *handle_l, hid_device *handle_r, unsigned char
     {
         hid_set_nonblocking(handle_r, 1);
         hid_write(handle_r, buf_r, len);
-	    hid_read(handle_r, buf_r, 65);
+        hid_read(handle_r, buf_r, 65);
 #ifdef DEBUG_PRINT
-	    hex_dump(buf_r, 0x40);
+        hex_dump(buf_r, 0x40);
 #endif
         hid_set_nonblocking(handle_r, 0);
     }
@@ -70,8 +70,8 @@ void spi_flash_dump(hid_device *handle, char *out_path)
 {
     unsigned char buf[0x40];
     unsigned char spi_read[0x39] = {0x80, 0x92, 0x0, 0x31, 0x0, 0x0, 0xd4, 0xe6, 0x1, 0xc, 0x0, 0x1, 0x40, 0x40, 0x0, 0x1, 0x40, 0x40, 0x10, 0x00, 0x0, 0x0, 0x0, 0x1C, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	
-	FILE *dump = fopen(out_path, "wb");
+    
+    FILE *dump = fopen(out_path, "wb");
     if(dump == NULL)
     {
         printf("Failed to open dump file %s, aborting...\n", out_path);
@@ -79,8 +79,8 @@ void spi_flash_dump(hid_device *handle, char *out_path)
     }
     
     uint32_t* offset = (uint32_t*)(&spi_read[0x13]);
-	for(*offset = 0; *offset < 0x80000; *offset += 0x1C)
-	{
+    for(*offset = 0; *offset < 0x80000; *offset += 0x1C)
+    {
         // HACK/TODO: hid_exchange loves to return data from the wrong addr, or 0x30 (NACK?) packets
         // so let's make sure our returned data is okay before writing
         while(1)
@@ -92,14 +92,14 @@ void spi_flash_dump(hid_device *handle, char *out_path)
             if((buf[0] == 0x81) && (*(uint32_t*)&buf[0x19] == *offset))
                 break;
         }
-	    
-	    fwrite(buf + 0x1E * sizeof(char), 0x1C, 1, dump);
+        
+        fwrite(buf + 0x1E * sizeof(char), 0x1C, 1, dump);
         
         if((*offset & 0xFF) == 0) // less spam
             printf("\rDumped 0x%05X of 0x80000", *offset);
-	}
+    }
     printf("\rDumped 0x80000 of 0x80000\n");
-	fclose(dump);
+    fclose(dump);
 }
 
 int joycon_init(hid_device *handle, const wchar_t *name)
@@ -108,52 +108,52 @@ int joycon_init(hid_device *handle, const wchar_t *name)
     memset(buf, 0, 0x40);
 
     // Get MAC Left
-	memset(buf, 0x00, 0x40);
-	buf[0] = 0x80;
-	buf[1] = 0x01;
-	hid_exchange(handle, buf, 0x2);
-	
-	if(buf[2] == 0x3)
-	{
-	    printf("%ls disconnected!\n", name);
-	    return -1;
-	}
-	else
-	{
-	    printf("Found %ls, MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", name, buf[9], buf[8], buf[7], buf[6], buf[5], buf[4]);
-	}
-		
-	// Do handshaking
-	memset(buf, 0x00, 0x40);
-	buf[0] = 0x80;
-	buf[1] = 0x02;
-	hid_exchange(handle, buf, 0x2);
-	
-	printf("Switching baudrate...\n");
-	
-	// Switch baudrate to 3Mbit
+    memset(buf, 0x00, 0x40);
+    buf[0] = 0x80;
+    buf[1] = 0x01;
+    hid_exchange(handle, buf, 0x2);
+    
+    if(buf[2] == 0x3)
+    {
+        printf("%ls disconnected!\n", name);
+        return -1;
+    }
+    else
+    {
+        printf("Found %ls, MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", name, buf[9], buf[8], buf[7], buf[6], buf[5], buf[4]);
+    }
+        
+    // Do handshaking
+    memset(buf, 0x00, 0x40);
+    buf[0] = 0x80;
+    buf[1] = 0x02;
+    hid_exchange(handle, buf, 0x2);
+    
+    printf("Switching baudrate...\n");
+    
+    // Switch baudrate to 3Mbit
 #ifndef WEIRD_VIBRATION_TEST
-	memset(buf, 0x00, 0x40);
-	buf[0] = 0x80;
-	buf[1] = 0x03;
-	hid_exchange(handle, buf, 0x2);
-	
-	// Do handshaking again at new baudrate so the firmware pulls pin 3 low?
-	memset(buf, 0x00, 0x40);
-	buf[0] = 0x80;
-	buf[1] = 0x02;
-	hid_exchange(handle, buf, 0x2);
-	
-	// Only talk HID from now on
-	memset(buf, 0x00, 0x40);
-	buf[0] = 0x80;
-	buf[1] = 0x04;
-	hid_exchange(handle, buf, 0x2);
+    memset(buf, 0x00, 0x40);
+    buf[0] = 0x80;
+    buf[1] = 0x03;
+    hid_exchange(handle, buf, 0x2);
+    
+    // Do handshaking again at new baudrate so the firmware pulls pin 3 low?
+    memset(buf, 0x00, 0x40);
+    buf[0] = 0x80;
+    buf[1] = 0x02;
+    hid_exchange(handle, buf, 0x2);
+    
+    // Only talk HID from now on
+    memset(buf, 0x00, 0x40);
+    buf[0] = 0x80;
+    buf[1] = 0x04;
+    hid_exchange(handle, buf, 0x2);
 #endif
-	
+    
     printf("Successfully initialized %ls!\n", name);
     
-	return 0;
+    return 0;
 }
 
 void joycon_deinit(hid_device *handle, const wchar_t *name)
@@ -161,12 +161,12 @@ void joycon_deinit(hid_device *handle, const wchar_t *name)
     unsigned char buf[0x40];
     memset(buf, 0x00, 0x40);
 
-    //Let the Joy-Con talk BT again	
-	buf[0] = 0x80;
-	buf[1] = 0x05;
-	hid_exchange(handle, buf, 0x2);
-	
-	printf("Deinitialized %ls\n", name);
+    //Let the Joy-Con talk BT again    
+    buf[0] = 0x80;
+    buf[1] = 0x05;
+    hid_exchange(handle, buf, 0x2);
+    
+    printf("Deinitialized %ls\n", name);
 }
 
 void device_print(struct hid_device_info *dev)
@@ -179,16 +179,16 @@ void device_print(struct hid_device_info *dev)
 
 int main(int argc, char* argv[])
 {
-	int res;
-	unsigned char buf[2][0x40] = {0};
-	hid_device *handle_l = 0, *handle_r = 0;
+    int res;
+    unsigned char buf[2][0x40] = {0};
+    hid_device *handle_l = 0, *handle_r = 0;
     const wchar_t *device_name = L"none";
-	struct hid_device_info *devs, *dev_iter;
-	bool charging_grip = false;
+    struct hid_device_info *devs, *dev_iter;
+    bool charging_grip = false;
     
     setbuf(stdout, NULL); // turn off stdout buffering for test reasons
 
-	res = hid_init();
+    res = hid_init();
     if(res)
     {
         printf("Failed to open hid library! Exiting...\n");
@@ -274,46 +274,46 @@ int main(int argc, char* argv[])
         }
         hid_free_enumeration(devs);
     }
-	
-	if(!handle_r)
-	{
-	    printf("Failed to get handle for right Joy-Con or Pro Controller, exiting...\n");
-	    return -1;
-	}
-	
-	// Only missing one half by this point
-	if(!handle_l && charging_grip)
-	{
-	    printf("Could not get handles for both Joy-Con in grip! Exiting...\n");
-	    return -1;
-	}
-	
+    
+    if(!handle_r)
+    {
+        printf("Failed to get handle for right Joy-Con or Pro Controller, exiting...\n");
+        return -1;
+    }
+    
+    // Only missing one half by this point
+    if(!handle_l && charging_grip)
+    {
+        printf("Could not get handles for both Joy-Con in grip! Exiting...\n");
+        return -1;
+    }
+    
     // controller init is complete at this point
     
 #ifdef DUMP_SPI
-	printf("Dumping controller SPI flashes...\n");
-	if(handle_l)
-	    spi_flash_dump(handle_l, "left_joycon_dump.bin");
-	spi_flash_dump(handle_r, "right_joycon_dump.bin");
+    printf("Dumping controller SPI flashes...\n");
+    if(handle_l)
+        spi_flash_dump(handle_l, "left_joycon_dump.bin");
+    spi_flash_dump(handle_r, "right_joycon_dump.bin");
 #endif
-	
+    
 // Replays a string of hex values (ie 80 92 .. ..) separated by newlines
 #ifdef REPLAY
-	ssize_t read;
-	char *line;
-	size_t len = 0;
-	FILE *replay = fopen("replay.txt", "rb");
-	while ((read = getline(&line, &len, replay)) > 0) {
-	    int i = 0;
-	    
-	    memset(buf[0], 0, 0x40);
-	    
-	    char *line_temp = line;
-	    while(i < 0x40)
-	    {
-	        buf[0][i++] = strtol(line_temp, &line_temp, 16);
-	    }
-	    if(buf[0][8] == 0x1f) continue; // Cull out input packets
+    ssize_t read;
+    char *line;
+    size_t len = 0;
+    FILE *replay = fopen("replay.txt", "rb");
+    while ((read = getline(&line, &len, replay)) > 0) {
+        int i = 0;
+        
+        memset(buf[0], 0, 0x40);
+        
+        char *line_temp = line;
+        while(i < 0x40)
+        {
+            buf[0][i++] = strtol(line_temp, &line_temp, 16);
+        }
+        if(buf[0][8] == 0x1f) continue; // Cull out input packets
 
         printf("Sent: ");
         hex_dump(buf[0], 0x40);
@@ -321,11 +321,11 @@ int main(int argc, char* argv[])
         if(buf[1])
             memcpy(buf[1], buf[0], 0x40);
             
-	    hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], 0x40);
-	    printf("Got:  ");
-	    hex_dump(buf[0], 0x40);
-	    printf("\n");
-	}
+        hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], 0x40);
+        printf("Got:  ");
+        hex_dump(buf[0], 0x40);
+        printf("\n");
+    }
 #endif
 
 #ifdef WEIRD_VIBRATION_TEST
@@ -361,34 +361,34 @@ int main(int argc, char* argv[])
         }
     }
 #endif
-	
+    
 #ifdef INPUT_LOOP
-	printf("Start input poll loop\n");
-	
-	unsigned long last = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
-	while(1) {
-	    printf("%02llums delay,  ", (std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1)) - last);
-	    last = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
+    printf("Start input poll loop\n");
+    
+    unsigned long last = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
+    while(1) {
+        printf("%02llums delay,  ", (std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1)) - last);
+        last = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
 
-	    buf[0][0] = 0x80; // 80     Do custom command
-	    buf[0][1] = 0x92; // 92     Post-handshake type command
-	    buf[0][2] = 0x00; // 0001   u16 second part size
-	    buf[0][3] = 0x01;
-	    buf[0][8] = 0x1F; // 1F     Get input command
-	    
-	    if(buf[1])
-	        memcpy(buf[1], buf[0], 0x9);
-	    hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], 0x9);
-	    
-	    if(buf[1])
-	    {
-	        printf("left ");
-	        hex_dump(buf[1], 0x3D);
-	        printf("            ");
-	    }
+        buf[0][0] = 0x80; // 80     Do custom command
+        buf[0][1] = 0x92; // 92     Post-handshake type command
+        buf[0][2] = 0x00; // 0001   u16 second part size
+        buf[0][3] = 0x01;
+        buf[0][8] = 0x1F; // 1F     Get input command
+        
+        if(buf[1])
+            memcpy(buf[1], buf[0], 0x9);
+        hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], 0x9);
+        
+        if(buf[1])
+        {
+            printf("left ");
+            hex_dump(buf[1], 0x3D);
+            printf("            ");
+        }
 
-	    printf("right ");
-	    hex_dump(buf[0], 0x3D);
+        printf("right ");
+        hex_dump(buf[0], 0x3D);
     }
 #endif
 
@@ -404,8 +404,8 @@ int main(int argc, char* argv[])
         hid_close(handle_r);
     }
 
-	// Finalize the hidapi library
-	res = hid_exit();
+    // Finalize the hidapi library
+    res = hid_exit();
 
-	return 0;
+    return 0;
 }
