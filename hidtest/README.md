@@ -7,6 +7,5 @@ This program will initialize two Joy-Con in a charging grip connected to a compu
 
 ## Things to do
 
-- Port to/test with a Pro Controller
 - Check for Joy-Con disconnects and reinitialize, along with this maybe have a thread which only reads incoming packets and sorts them accordingly?
 - Port as a Linux HID driver?

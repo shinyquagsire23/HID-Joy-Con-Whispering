@@ -204,9 +204,9 @@ int main(int argc, char* argv[])
         {
             
             // break out if the current handle is already used
-            if(dev_iter->product_id != JOYCON_L_BT && handle_r)
+            if((dev_iter->product_id == JOYCON_R_BT || dev_iter->interface_number == 0) && handle_r)
                 break;
-            else if(dev_iter->product_id == JOYCON_L_BT && handle_l)
+            else if((dev_iter->product_id == JOYCON_L_BT || dev_iter->interface_number == 1) && handle_l)
                 break;
             
             device_print(dev_iter);
