@@ -79,6 +79,8 @@ typedef struct input_packet
     uint8_t sticks[6];
 } input_packet;
 
+bool disconnect = false;
+
 void hex_dump(unsigned char *buf, int len)
 {
     for (int i = 0; i < len; i++)
@@ -88,11 +90,24 @@ void hex_dump(unsigned char *buf, int len)
 
 void hid_exchange(hid_device *handle, unsigned char *buf, int len)
 {
+    int res;
+    
     if(!handle) return; //TODO: idk I just don't like this to be honest
     
-    hid_write(handle, buf, len);
+    res = hid_write(handle, buf, len);
+    if(res < 0)
+    {
+        disconnect = true;
+        return;
+    }
 
-    int res = hid_read(handle, buf, 0x40);
+    res = hid_read(handle, buf, 0x40);
+    if(res < 0)
+    {
+        disconnect = true;
+        return;
+    }
+
 #ifdef DEBUG_PRINT
     hex_dump(buf, 0x40);
 #endif
@@ -100,11 +115,25 @@ void hid_exchange(hid_device *handle, unsigned char *buf, int len)
 
 void hid_dual_exchange(hid_device *handle_l, hid_device *handle_r, unsigned char *buf_l, unsigned char *buf_r, int len)
 {
+    int res;
+
     if(handle_l && buf_l)
     {
         hid_set_nonblocking(handle_l, 1);
-        hid_write(handle_l, buf_l, len);
-        hid_read(handle_l, buf_l, 65);
+        res = hid_write(handle_l, buf_l, len);
+        if(res < 0)
+        {
+            disconnect = true;
+            return;
+        }
+
+        res = hid_read(handle_l, buf_l, 65);
+        if(res < 0)
+        {
+            disconnect = true;
+            return;
+        }
+        
 #ifdef DEBUG_PRINT
         hex_dump(buf_l, 0x40);
 #endif
@@ -114,8 +143,19 @@ void hid_dual_exchange(hid_device *handle_l, hid_device *handle_r, unsigned char
     if(handle_r && buf_r)
     {
         hid_set_nonblocking(handle_r, 1);
-        hid_write(handle_r, buf_r, len);
-        hid_read(handle_r, buf_r, 65);
+        res = hid_write(handle_r, buf_r, len);
+        if(res < 0)
+        {
+            disconnect = true;
+            return;
+        }
+    
+        res = hid_read(handle_r, buf_r, 65);
+        if(res < 0)
+        {
+            disconnect = true;
+            return;
+        }
 #ifdef DEBUG_PRINT
         hex_dump(buf_r, 0x40);
 #endif
@@ -125,17 +165,31 @@ void hid_dual_exchange(hid_device *handle_l, hid_device *handle_r, unsigned char
 
 void hid_dual_write(hid_device *handle_l, hid_device *handle_r, unsigned char *buf_l, unsigned char *buf_r, int len)
 {
+    int res;
+    
     if(handle_l && buf_l)
     {
         hid_set_nonblocking(handle_l, 1);
-        hid_write(handle_l, buf_l, len);
+        res = hid_write(handle_l, buf_l, len);
+        if(res < 0)
+        {
+            disconnect = true;
+            return;
+        }
+        
         hid_set_nonblocking(handle_l, 0);
     }
     
     if(handle_r && buf_r)
     {
         hid_set_nonblocking(handle_r, 1);
-        hid_write(handle_r, buf_r, len);
+        res = hid_write(handle_r, buf_r, len);
+        if(res < 0)
+        {
+            disconnect = true;
+            return;
+        }
+        
         hid_set_nonblocking(handle_r, 0);
     }
 }
@@ -391,6 +445,22 @@ int main(void)
         printf("Failed to open hid library! Exiting...\n");
         return -1;
     }
+    
+init_start:
+    disconnect = false;
+    charging_grip = false;
+
+    if(handle_l)
+    {
+        hid_close(handle_l);
+        handle_l = 0;
+    }
+    
+    if(handle_r)
+    {
+        hid_close(handle_r);
+        handle_r = 0;
+    }
 
     // iterate thru all the valid product ids and try and initialize controllers
     for(int i = 0; i < sizeof(product_ids); i++)
@@ -474,17 +544,21 @@ int main(void)
     
     if(!handle_r)
     {
-        printf("Failed to get handle for right Joy-Con or Pro Controller, exiting...\n");
-        return -1;
+        printf("Failed to get handle for right Joy-Con or Pro Controller...\n");
+        
+        sleep(1);
+        goto init_start;
     }
     
     // Only missing one half by this point
     if(!handle_l && charging_grip)
     {
-        printf("Could not get handles for both Joy-Con in grip! Exiting...\n");
+        printf("Could not get handles for both Joy-Con in grip...\n");
         
         joycon_deinit(handle_r, device_name);
-        return -1;
+        
+        sleep(1);
+        goto init_start;
     }
     
     // controller init is complete at this point
@@ -568,6 +642,8 @@ int main(void)
         ev.code = 0;
         ev.value = 0;
         write(fd, &ev, sizeof(struct input_event));
+        
+        if(disconnect) goto init_start;
     }
 
     if(handle_l)
