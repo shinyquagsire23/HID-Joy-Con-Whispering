@@ -298,7 +298,7 @@ void joycon_parse_input(int fd, unsigned char *data, int type)
         }
         
         int stick_x = ((input->sticks[1] & 0x0F) << 4) | ((input->sticks[0] & 0xF0) >> 4);
-        int stick_y = input->sticks[2];
+        int stick_y = 256 - input->sticks[2];
         
         memset(&ev, 0, sizeof(struct input_event));
         ev.type = EV_ABS;
@@ -338,7 +338,7 @@ void joycon_parse_input(int fd, unsigned char *data, int type)
         }
         
         int stick_x = ((input->sticks[4] & 0x0F) << 4) | ((input->sticks[3] & 0xF0) >> 4);
-        int stick_y = input->sticks[5];
+        int stick_y = 256 - input->sticks[5];
         
         memset(&ev, 0, sizeof(struct input_event));
         ev.type = EV_ABS;
