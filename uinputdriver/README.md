@@ -7,4 +7,4 @@ This program will create a single evdev controller from either two Joy-Con in a 
 
 ## Things to do
 
-- Check for Joy-Con disconnects and reinitialize, along with this maybe have a thread which only reads incoming packets and sorts them accordingly?
+- Threading for multiple Joy-Con, maybe get input latency down that way from 15ms to 8ms?
