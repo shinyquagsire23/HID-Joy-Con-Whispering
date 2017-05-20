@@ -20,6 +20,7 @@ unsigned short product_ids[] = {JOYCON_L_BT, JOYCON_R_BT, PRO_CONTROLLER, JOYCON
 //#define DUMP_SPI
 //#define REPLAY
 //#define WEIRD_VIBRATION_TEST
+//#define WRITE_TEST
 #define INPUT_LOOP
 
 void hex_dump(unsigned char *buf, int len)
@@ -100,6 +101,27 @@ void spi_flash_dump(hid_device *handle, char *out_path)
     }
     printf("\rDumped 0x80000 of 0x80000\n");
     fclose(dump);
+}
+
+void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
+{
+   unsigned char buf[0x40];
+   unsigned char spi_write[0x39] = {0x80, 0x92, 0x00, 0x31, 0x00, 0x00, 0x1a, 0xad, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x50, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+   uint32_t* offset = (uint32_t*)(&spi_write[0x13]);
+   uint8_t* length = (uint8_t*)(&spi_write[0x17]);
+   
+   *length = len;
+   *offset = offs;
+   memcpy(&spi_write[0x18], data, len);
+   
+   int max_write_count = 30;
+   do
+   {
+      usleep(100000);
+      memcpy(buf, spi_write, 0x39);
+      hid_exchange(handle, buf, 0x39);
+   }
+   while(buf[0] == 0x30 || max_write_count-- <= 0);
 }
 
 int joycon_init(hid_device *handle, const wchar_t *name)
@@ -361,6 +383,23 @@ int main(int argc, char* argv[])
         }
     }
 #endif
+   
+   
+#ifdef WRITE_TEST
+   // Joy-Con color data, body RGB #E8B31C and button RGB #1C1100
+   unsigned char color_buffer[6] = {0xE8, 0xB3, 0x5F, 0x1C, 0x11, 0x00};
+   
+   printf("Changing body color to #%02x%02x%02x, buttons to #%02x%02x%02x\n", 
+          color_buffer[0], color_buffer[1], color_buffer[2],
+          color_buffer[3], color_buffer[4], color_buffer[5]);
+   printf("It's probably safe to exit while this is going, but please wait while it writes...\n");
+   
+   spi_write(handle_r, 0x6050, color_buffer, 6);
+   if(handle_l)
+      spi_write(handle_l, 0x6050, color_buffer, 6);
+   printf("Writes completed.\n");
+#endif
+   
     
 #ifdef INPUT_LOOP
     printf("Start input poll loop\n");
