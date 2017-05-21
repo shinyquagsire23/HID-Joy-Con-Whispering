@@ -105,23 +105,23 @@ void spi_flash_dump(hid_device *handle, char *out_path)
 
 void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 {
-   unsigned char buf[0x40];
-   unsigned char spi_write[0x39] = {0x80, 0x92, 0x00, 0x31, 0x00, 0x00, 0x1a, 0xad, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x50, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-   uint32_t* offset = (uint32_t*)(&spi_write[0x13]);
-   uint8_t* length = (uint8_t*)(&spi_write[0x17]);
+    unsigned char buf[0x40];
+    unsigned char spi_write[0x39] = {0x80, 0x92, 0x00, 0x31, 0x00, 0x00, 0x1a, 0xad, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x50, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint32_t* offset = (uint32_t*)(&spi_write[0x13]);
+    uint8_t* length = (uint8_t*)(&spi_write[0x17]);
    
-   *length = len;
-   *offset = offs;
-   memcpy(&spi_write[0x18], data, len);
+    *length = len;
+    *offset = offs;
+    memcpy(&spi_write[0x18], data, len);
    
-   int max_write_count = 30;
-   do
-   {
-      usleep(100000);
-      memcpy(buf, spi_write, 0x39);
-      hid_exchange(handle, buf, 0x39);
-   }
-   while(buf[0] == 0x30 || max_write_count-- <= 0);
+    int max_write_count = 30;
+    do
+    {
+        usleep(100000);
+        memcpy(buf, spi_write, 0x39);
+        hid_exchange(handle, buf, 0x39);
+    }
+    while(buf[0] == 0x30 || max_write_count-- <= 0);
 }
 
 int joycon_init(hid_device *handle, const wchar_t *name)
@@ -154,7 +154,6 @@ int joycon_init(hid_device *handle, const wchar_t *name)
     printf("Switching baudrate...\n");
     
     // Switch baudrate to 3Mbit
-#ifndef WEIRD_VIBRATION_TEST
     memset(buf, 0x00, 0x40);
     buf[0] = 0x80;
     buf[1] = 0x03;
@@ -171,7 +170,30 @@ int joycon_init(hid_device *handle, const wchar_t *name)
     buf[0] = 0x80;
     buf[1] = 0x04;
     hid_exchange(handle, buf, 0x2);
-#endif
+
+    // Enable vibration
+    memset(buf, 0x00, 0x40);
+    buf[0x00] = 0x80;
+    buf[0x01] = 0x92;
+    buf[0x03] = 0x31;
+    buf[0x06] = 0xAE;
+    buf[0x07] = 0xFB;
+    buf[0x08] = 0x01; // Extended command set
+    buf[0x12] = 0x48; // Command ID 0x48
+    buf[0x13] = 0x01; // Enabled
+    hid_exchange(handle, buf, 0x40);
+    
+    // Enable IMU data
+    memset(buf, 0x00, 0x40);
+    buf[0x00] = 0x80;
+    buf[0x01] = 0x92;
+    buf[0x03] = 0x31;
+    buf[0x06] = 0xAE;
+    buf[0x07] = 0xFB;
+    buf[0x08] = 0x01; // Extended command set
+    buf[0x12] = 0x40; // Command ID 0x40
+    buf[0x13] = 0x01; // Enabled
+    hid_exchange(handle, buf, 0x40);
     
     printf("Successfully initialized %ls!\n", name);
     
@@ -333,17 +355,19 @@ int main(int argc, char* argv[])
         char *line_temp = line;
         while(i < 0x40)
         {
+            char *last_temp = line_temp;
             buf[0][i++] = strtol(line_temp, &line_temp, 16);
+            if(line_temp == last_temp) break;
         }
         if(buf[0][8] == 0x1f) continue; // Cull out input packets
 
         printf("Sent: ");
-        hex_dump(buf[0], 0x40);
+        hex_dump(buf[0], i-1);
         
         if(buf[1])
             memcpy(buf[1], buf[0], 0x40);
             
-        hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], 0x40);
+        hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], i-1);
         printf("Got:  ");
         hex_dump(buf[0], 0x40);
         printf("\n");
@@ -387,24 +411,26 @@ int main(int argc, char* argv[])
    
 #ifdef WRITE_TEST
    // Joy-Con color data, body RGB #E8B31C and button RGB #1C1100
-   unsigned char color_buffer[6] = {0xE8, 0xB3, 0x5F, 0x1C, 0x11, 0x00};
+    unsigned char color_buffer[6] = {0xE8, 0xB3, 0x5F, 0x1C, 0x11, 0x00};
    
-   printf("Changing body color to #%02x%02x%02x, buttons to #%02x%02x%02x\n", 
-          color_buffer[0], color_buffer[1], color_buffer[2],
-          color_buffer[3], color_buffer[4], color_buffer[5]);
-   printf("It's probably safe to exit while this is going, but please wait while it writes...\n");
+    printf("Changing body color to #%02x%02x%02x, buttons to #%02x%02x%02x\n", 
+           color_buffer[0], color_buffer[1], color_buffer[2],
+           color_buffer[3], color_buffer[4], color_buffer[5]);
+    printf("It's probably safe to exit while this is going, but please wait while it writes...\n");
    
-   spi_write(handle_r, 0x6050, color_buffer, 6);
-   if(handle_l)
-      spi_write(handle_l, 0x6050, color_buffer, 6);
-   printf("Writes completed.\n");
+    spi_write(handle_r, 0x6050, color_buffer, 6);
+    if(handle_l)
+        spi_write(handle_l, 0x6050, color_buffer, 6);
+    printf("Writes completed.\n");
 #endif
    
     
 #ifdef INPUT_LOOP
+    usleep(1000000);
     printf("Start input poll loop\n");
     
     unsigned long last = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
+    int input_count = 0;
     while(1) {
         printf("%02llums delay,  ", (std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1)) - last);
         last = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
