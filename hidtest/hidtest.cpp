@@ -9,8 +9,6 @@
 #include <cstring>
 #include <hidapi/hidapi.h>
 
-bool bluetooth = true;
-
 #define JOYCON_L_BT (0x2006)
 #define JOYCON_R_BT (0x2007)
 #define PRO_CONTROLLER (0x2009)
@@ -24,6 +22,9 @@ unsigned short product_ids[] = {JOYCON_L_BT, JOYCON_R_BT, PRO_CONTROLLER, JOYCON
 //#define WEIRD_VIBRATION_TEST
 //#define WRITE_TEST
 #define INPUT_LOOP
+
+bool bluetooth = true;
+uint8_t global_count = 0;
 
 void hex_dump(unsigned char *buf, int len)
 {
@@ -95,10 +96,28 @@ void joycon_send_command(hid_device *handle, int command, uint8_t *data, int len
         memcpy(data, buf, 0x40);
 }
 
+void joycon_send_subcommand(hid_device *handle, int command, int subcommand, uint8_t *data, int len)
+{
+    unsigned char buf[0x40];
+    memset(buf, 0, 0x40);
+    
+    uint8_t rumble_base[9] = {(++global_count) & 0xF, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40};
+    memcpy(buf, rumble_base, 9);
+    
+    buf[9] = subcommand;
+    if(data && len != 0)
+        memcpy(buf + 10, data, len);
+        
+    joycon_send_command(handle, command, buf, 10 + len);
+        
+    if(data)
+        memcpy(data, buf, 0x40); //TODO
+}
+
 void spi_flash_dump(hid_device *handle, char *out_path)
 {
     unsigned char buf[0x40];
-    unsigned char spi_read[0x30] = {0xc, 0x0, 0x1, 0x40, 0x40, 0x0, 0x1, 0x40, 0x40, 0x10, 0x00, 0x0, 0x0, 0x0, 0x1C, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+    uint8_t *spi_read = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
     
     FILE *dump = fopen(out_path, "wb");
     if(dump == NULL)
@@ -107,15 +126,15 @@ void spi_flash_dump(hid_device *handle, char *out_path)
         return;
     }
     
-    uint32_t* offset = (uint32_t*)(&spi_read[0xA]);
+    uint32_t* offset = (uint32_t*)(&spi_read[0x0]);
     for(*offset = 0x0; *offset < 0x80000; *offset += 0x1C)
     {
         // HACK/TODO: hid_exchange loves to return data from the wrong addr, or 0x30 (NACK?) packets
         // so let's make sure our returned data is okay before writing
         while(1)
         {
-            memcpy(buf, spi_read, 0x30);
-            joycon_send_command(handle, 0x1, buf, 0x30);
+            memcpy(buf, spi_read, 0x26);
+            joycon_send_subcommand(handle, 0x1, 0x10, buf, 0x26);
             
             // sanity-check our data, loop if it's not good
             if((buf[0] == (bluetooth ? 0x21 : 0x81)) && (*(uint32_t*)&buf[0xF + (bluetooth ? 0 : 10)] == *offset))
@@ -134,20 +153,20 @@ void spi_flash_dump(hid_device *handle, char *out_path)
 void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 {
     unsigned char buf[0x40];
-    unsigned char spi_write[0x30] = {0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x50, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint32_t* offset = (uint32_t*)(&spi_write[0xA]);
-    uint8_t* length = (uint8_t*)(&spi_write[0xE]);
+    uint8_t *spi_write = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
+    uint32_t* offset = (uint32_t*)(&spi_write[0]);
+    uint8_t* length = (uint8_t*)(&spi_write[4]);
    
     *length = len;
     *offset = offs;
-    memcpy(&spi_write[0xF], data, len);
+    memcpy(&spi_write[0x5], data, len);
    
     int max_write_count = 30;
     do
     {
         //usleep(300000);
         memcpy(buf, spi_write, 0x39);
-         joycon_send_command(handle, 0x1, buf, 0x30);
+        joycon_send_subcommand(handle, 0x1, 0x11, buf, 0x26);
     }
     while(buf[0x10 + (bluetooth ? 0 : 10)] != 0x11 && buf[0] != (bluetooth ? 0x21 : 0x81));
 }
@@ -155,9 +174,9 @@ void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 {
     unsigned char buf[0x40];
-    unsigned char spi_read[0x30] = {0xc, 0x0, 0x1, 0x40, 0x40, 0x0, 0x1, 0x40, 0x40, 0x10, 0x00, 0x0, 0x0, 0x0, 0x1C, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-    uint32_t* offset = (uint32_t*)(&spi_read[0xA]);
-    uint8_t* length = (uint8_t*)(&spi_read[0xE]);
+    uint8_t *spi_read = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
+    uint32_t* offset = (uint32_t*)(&spi_read[0]);
+    uint8_t* length = (uint8_t*)(&spi_read[4]);
    
     *length = len;
     *offset = offs;
@@ -166,8 +185,8 @@ void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
     do
     {
         //usleep(300000);
-        memcpy(buf, spi_read, 0x39);
-        joycon_send_command(handle, 0x1, buf, 0x30); //TODO: subcommands, this is subcommand 0x10
+        memcpy(buf, spi_read, 0x36);
+        joycon_send_subcommand(handle, 0x1, 0x10, buf, 0x26);
     }
     while(*(uint32_t*)&buf[0xF + (bluetooth ? 0 : 10)] != *offset);
     
@@ -227,15 +246,13 @@ int joycon_init(hid_device *handle, const wchar_t *name)
 
     // Enable vibration
     memset(buf, 0x00, 0x40);
-    buf[0x9] = 0x48; // Command ID 0x48
-    buf[0xA] = 0x01; // Enabled
-    joycon_send_command(handle, 0x1, buf, 0x37);
+    buf[0] = 0x01; // Enabled
+    joycon_send_subcommand(handle, 0x1, 0x48, buf, 1);
     
     // Enable IMU data
     memset(buf, 0x00, 0x40);
-    buf[0x9] = 0x40; // Command ID 0x40
-    buf[0xA] = 0x01; // Enabled
-    joycon_send_command(handle, 0x1, buf, 0x37);
+    buf[0] = 0x01; // Enabled
+    joycon_send_subcommand(handle, 0x1, 0x40, buf, 1);
     
     printf("Successfully initialized %ls!\n", name);
     
@@ -493,20 +510,10 @@ int main(int argc, char* argv[])
         }
         else
         {
-            // Send blank vibration packets to trigger the 0x21 packets being sent
-            memset(buf[1], 0, 0x40);
-            buf[1][0] = (++input_count & 0xf);
-            buf[1][2] = 0x01;
-            buf[1][3] = 0x40;
-            buf[1][4] = 0x40;
-            buf[1][6] = 0x01;
-            buf[1][7] = 0x40;
-            buf[1][8] = 0x40;
-            memcpy(buf[0], buf[1], 0x40);
-        
+            // Fetch more 0x21 input packets        
             if(handle_l)
-                joycon_send_command(handle_l, 0x1, buf[1], 9);
-            joycon_send_command(handle_r, 0x1, buf[0], 9);
+                joycon_send_subcommand(handle_l, 0x1, 0x0, buf[1], 0);
+            joycon_send_subcommand(handle_r, 0x1, 0x0, buf[0], 0);
         }
         
         // USB HID isn't ready
