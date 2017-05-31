@@ -1,6 +1,6 @@
 # hidtest
 
-This program will initialize two Joy-Con in a charging grip connected to a computer over USB-C, and then proceed to print out input packets to stdout. The program can also optionally dump both Joy-Con SPI flashes. Requires hidapi and is currently only tested on Linux.
+This program will initialize two Joy-Con or one Pro Controller either over Bluetooth or connected to a computer over USB-C (requires a charging grip for Joy-Con), and then proceed to print out input packets to stdout. The program can also optionally dump SPI flashes, test vibration, write to SPI, or replay packets from a text file. Requires hidapi and is currently only tested on Linux.
 
 ## Compiling
 `g++ -lhidapi-hidraw hidtest.cpp`
