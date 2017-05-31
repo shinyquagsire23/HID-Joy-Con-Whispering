@@ -34,6 +34,10 @@ void hid_exchange(hid_device *handle, unsigned char *buf, int len)
 {
     if(!handle) return; //TODO: idk I just don't like this to be honest
     
+#ifdef DEBUG_PRINT
+    hex_dump(buf, 0x40);
+#endif
+    
     hid_write(handle, buf, len);
 
     int res = hid_read(handle, buf, 0x40);
@@ -80,7 +84,7 @@ void spi_flash_dump(hid_device *handle, char *out_path)
     }
     
     uint32_t* offset = (uint32_t*)(&spi_read[0x13]);
-    for(*offset = 0; *offset < 0x80000; *offset += 0x1C)
+    for(*offset = 0x0; *offset < 0x80000; *offset += 0x1C)
     {
         // HACK/TODO: hid_exchange loves to return data from the wrong addr, or 0x30 (NACK?) packets
         // so let's make sure our returned data is okay before writing
@@ -117,11 +121,33 @@ void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
     int max_write_count = 30;
     do
     {
-        usleep(100000);
+        //usleep(300000);
         memcpy(buf, spi_write, 0x39);
         hid_exchange(handle, buf, 0x39);
     }
-    while(buf[0] == 0x30 || max_write_count-- <= 0);
+    while(buf[0x19] != 0x11 && buf[0] != 0x81);
+}
+
+void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
+{
+    unsigned char buf[0x40];
+    unsigned char spi_read[0x39] = {0x80, 0x92, 0x0, 0x31, 0x0, 0x0, 0xd4, 0xe6, 0x1, 0xc, 0x0, 0x1, 0x40, 0x40, 0x0, 0x1, 0x40, 0x40, 0x10, 0x00, 0x0, 0x0, 0x0, 0x1C, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+    uint32_t* offset = (uint32_t*)(&spi_read[0x13]);
+    uint8_t* length = (uint8_t*)(&spi_read[0x17]);
+   
+    *length = len;
+    *offset = offs;
+   
+    int max_read_count = 30;
+    do
+    {
+        //usleep(300000);
+        memcpy(buf, spi_read, 0x39);
+        hid_exchange(handle, buf, 0x39);
+    }
+    while(*(uint32_t*)&buf[0x19] != *offset);
+    
+    memcpy(data, &buf[0x1E], len);
 }
 
 int joycon_init(hid_device *handle, const wchar_t *name)
@@ -423,7 +449,7 @@ int main(int argc, char* argv[])
         spi_write(handle_l, 0x6050, color_buffer, 6);
     printf("Writes completed.\n");
 #endif
-   
+
     
 #ifdef INPUT_LOOP
     usleep(1000000);
