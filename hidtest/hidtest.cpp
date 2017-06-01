@@ -38,26 +38,30 @@ void hid_exchange(hid_device *handle, unsigned char *buf, int len)
     if(!handle) return; //TODO: idk I just don't like this to be honest
     
 #ifdef DEBUG_PRINT
-    hex_dump(buf, 0x40);
+    hex_dump(buf, len);
 #endif
     
     hid_write(handle, buf, len);
 
-    int res = hid_read(handle, buf, 0x40);
+    int res = hid_read(handle, buf, 0x400);
 #ifdef DEBUG_PRINT
-    hex_dump(buf, 0x40);
+    if(res > 0)
+        hex_dump(buf, res);
 #endif
 }
 
-void hid_dual_exchange(hid_device *handle_l, hid_device *handle_r, unsigned char *buf_l, unsigned char *buf_r, int len)
+int hid_dual_exchange(hid_device *handle_l, hid_device *handle_r, unsigned char *buf_l, unsigned char *buf_r, int len)
 {
+    int res = -1;
+    
     if(handle_l && buf_l)
     {
         hid_set_nonblocking(handle_l, 1);
-        hid_write(handle_l, buf_l, len);
-        hid_read(handle_l, buf_l, 65);
+        res = hid_write(handle_l, buf_l, len);
+        res = hid_read(handle_l, buf_l, 0x400);
 #ifdef DEBUG_PRINT
-        hex_dump(buf_l, 0x40);
+        if(res > 0)
+            hex_dump(buf_l, res);
 #endif
         hid_set_nonblocking(handle_l, 0);
     }
@@ -65,19 +69,27 @@ void hid_dual_exchange(hid_device *handle_l, hid_device *handle_r, unsigned char
     if(handle_r && buf_r)
     {
         hid_set_nonblocking(handle_r, 1);
-        hid_write(handle_r, buf_r, len);
-        hid_read(handle_r, buf_r, 65);
+        res = hid_write(handle_r, buf_r, len);
+        //usleep(17000);
+        do
+        {
+            res = hid_read(handle_r, buf_r, 0x400);
+        }
+        while(!res);
 #ifdef DEBUG_PRINT
-        hex_dump(buf_r, 0x40);
+        if(res > 0)
+            hex_dump(buf_r, res);
 #endif
         hid_set_nonblocking(handle_r, 0);
     }
+    
+    return res;
 }
 
 void joycon_send_command(hid_device *handle, int command, uint8_t *data, int len)
 {
-    unsigned char buf[0x40];
-    memset(buf, 0, 0x40);
+    unsigned char buf[0x400];
+    memset(buf, 0, 0x400);
     
     if(!bluetooth)
     {
@@ -98,8 +110,8 @@ void joycon_send_command(hid_device *handle, int command, uint8_t *data, int len
 
 void joycon_send_subcommand(hid_device *handle, int command, int subcommand, uint8_t *data, int len)
 {
-    unsigned char buf[0x40];
-    memset(buf, 0, 0x40);
+    unsigned char buf[0x400];
+    memset(buf, 0, 0x400);
     
     uint8_t rumble_base[9] = {(++global_count) & 0xF, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40};
     memcpy(buf, rumble_base, 9);
@@ -116,7 +128,7 @@ void joycon_send_subcommand(hid_device *handle, int command, int subcommand, uin
 
 void spi_flash_dump(hid_device *handle, char *out_path)
 {
-    unsigned char buf[0x40];
+    unsigned char buf[0x400];
     uint8_t *spi_read = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
     
     FILE *dump = fopen(out_path, "wb");
@@ -152,7 +164,7 @@ void spi_flash_dump(hid_device *handle, char *out_path)
 
 void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 {
-    unsigned char buf[0x40];
+    unsigned char buf[0x400];
     uint8_t *spi_write = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
     uint32_t* offset = (uint32_t*)(&spi_write[0]);
     uint8_t* length = (uint8_t*)(&spi_write[4]);
@@ -173,7 +185,7 @@ void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 
 void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 {
-    unsigned char buf[0x40];
+    unsigned char buf[0x400];
     uint8_t *spi_read = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
     uint32_t* offset = (uint32_t*)(&spi_read[0]);
     uint8_t* length = (uint8_t*)(&spi_read[4]);
@@ -195,14 +207,14 @@ void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 
 int joycon_init(hid_device *handle, const wchar_t *name)
 {
-    unsigned char buf[0x40];
-    memset(buf, 0, 0x40);
+    unsigned char buf[0x400];
+    memset(buf, 0, 0x400);
     
     
     if(!bluetooth)
     {
         // Get MAC Left
-        memset(buf, 0x00, 0x40);
+        memset(buf, 0x00, 0x400);
         buf[0] = 0x80;
         buf[1] = 0x01;
         hid_exchange(handle, buf, 0x2);
@@ -218,7 +230,7 @@ int joycon_init(hid_device *handle, const wchar_t *name)
         }
             
         // Do handshaking
-        memset(buf, 0x00, 0x40);
+        memset(buf, 0x00, 0x400);
         buf[0] = 0x80;
         buf[1] = 0x02;
         hid_exchange(handle, buf, 0x2);
@@ -226,31 +238,31 @@ int joycon_init(hid_device *handle, const wchar_t *name)
         printf("Switching baudrate...\n");
         
         // Switch baudrate to 3Mbit
-        memset(buf, 0x00, 0x40);
+        memset(buf, 0x00, 0x400);
         buf[0] = 0x80;
         buf[1] = 0x03;
         hid_exchange(handle, buf, 0x2);
         
         // Do handshaking again at new baudrate so the firmware pulls pin 3 low?
-        memset(buf, 0x00, 0x40);
+        memset(buf, 0x00, 0x400);
         buf[0] = 0x80;
         buf[1] = 0x02;
         hid_exchange(handle, buf, 0x2);
         
         // Only talk HID from now on
-        memset(buf, 0x00, 0x40);
+        memset(buf, 0x00, 0x400);
         buf[0] = 0x80;
         buf[1] = 0x04;
         hid_exchange(handle, buf, 0x2);
     }
 
     // Enable vibration
-    memset(buf, 0x00, 0x40);
+    memset(buf, 0x00, 0x400);
     buf[0] = 0x01; // Enabled
     joycon_send_subcommand(handle, 0x1, 0x48, buf, 1);
     
     // Enable IMU data
-    memset(buf, 0x00, 0x40);
+    memset(buf, 0x00, 0x400);
     buf[0] = 0x01; // Enabled
     joycon_send_subcommand(handle, 0x1, 0x40, buf, 1);
     
@@ -261,8 +273,8 @@ int joycon_init(hid_device *handle, const wchar_t *name)
 
 void joycon_deinit(hid_device *handle, const wchar_t *name)
 {
-    unsigned char buf[0x40];
-    memset(buf, 0x00, 0x40);
+    unsigned char buf[0x400];
+    memset(buf, 0x00, 0x400);
 
     //Let the Joy-Con talk BT again 
     if(!bluetooth)
@@ -286,7 +298,7 @@ void device_print(struct hid_device_info *dev)
 int main(int argc, char* argv[])
 {
     int res;
-    unsigned char buf[2][0x40] = {0};
+    unsigned char buf[2][0x400] = {0};
     hid_device *handle_l = 0, *handle_r = 0;
     const wchar_t *device_name = L"none";
     struct hid_device_info *devs, *dev_iter;
@@ -422,10 +434,10 @@ int main(int argc, char* argv[])
     while ((read = getline(&line, &len, replay)) > 0) {
         int i = 0;
         
-        memset(buf[0], 0, 0x40);
+        memset(buf[0], 0, 0x400);
         
         char *line_temp = line;
-        while(i < 0x40)
+        while(i < 0x400)
         {
             char *last_temp = line_temp;
             buf[0][i++] = strtol(line_temp, &line_temp, 16);
@@ -433,15 +445,15 @@ int main(int argc, char* argv[])
         }
         if(buf[0][8] == 0x1f) continue; // Cull out input packets
 
-        printf("Sent: ");
+        printf("Sent:     ");
         hex_dump(buf[0], i-1);
         
         if(buf[1])
-            memcpy(buf[1], buf[0], 0x40);
+            memcpy(buf[1], buf[0], 0x400);
             
-        hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], i-1);
-        printf("Got:  ");
-        hex_dump(buf[0], 0x40);
+        int ret_size = hid_dual_exchange(handle_l, handle_r, buf[1], buf[0], i-1);
+        printf("Got %03x:  ", ret_size);
+        hex_dump(buf[0], ret_size);
         printf("\n");
     }
 #endif
@@ -453,7 +465,7 @@ int main(int argc, char* argv[])
         {
             for(int k = 0; k < 256; k++)
             {
-                memset(buf[0], 0, 0x40);
+                memset(buf[0], 0, 0x400);
                 for(int j = 0; j <= 8; j++)
                 {
                     buf[0][1+i] = 0x1;//(i + j) & 0xFF;
@@ -464,7 +476,7 @@ int main(int argc, char* argv[])
                 buf[0][1+4] = k;
                 
                 if(buf[1])
-                    memcpy(buf[1], buf[0], 0x40);
+                    memcpy(buf[1], buf[0], 0x400);
                 
                 if(handle_l)
                     joycon_send_command(handle_r, 0x10, (uint8_t*)buf, 0x9);
