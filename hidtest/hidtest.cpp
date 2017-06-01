@@ -21,6 +21,7 @@ unsigned short product_ids[] = {JOYCON_L_BT, JOYCON_R_BT, PRO_CONTROLLER, JOYCON
 //#define REPLAY
 //#define WEIRD_VIBRATION_TEST
 //#define WRITE_TEST
+//#define LED_TEST
 #define INPUT_LOOP
 
 bool bluetooth = true;
@@ -503,6 +504,27 @@ int main(int argc, char* argv[])
     printf("Writes completed.\n");
 #endif
 
+#ifdef LED_TEST
+    printf("Enabling some LEDs, sometimes this can fail and take a few times?\n");
+
+    // Player LED Enable
+    memset(buf[0], 0x00, 0x400);
+    memset(buf[1], 0x00, 0x400);
+    buf[0][0] = 0x80 | 0x40 | 0x2 | 0x1; // Flash top two, solid bottom two
+    buf[1][0] = 0x80 | 0x40 | 0x2 | 0x1;
+    joycon_send_subcommand(handle_r, 0x1, 0x30, buf[0], 1);
+    if(handle_l)
+        joycon_send_subcommand(handle_l, 0x1, 0x30, buf[1], 1);
+    
+    // Home LED Enable
+    memset(buf[0], 0x00, 0x400);
+    memset(buf[1], 0x00, 0x400);
+    buf[0][0] = 0xFF; // Slowest pulse?
+    buf[1][0] = 0xFF;
+    joycon_send_subcommand(handle_r, 0x1, 0x38, buf[0], 1);
+    if(handle_l)
+        joycon_send_subcommand(handle_l, 0x1, 0x38, buf[1], 1);
+#endif
     
 #ifdef INPUT_LOOP
     usleep(1000000);
