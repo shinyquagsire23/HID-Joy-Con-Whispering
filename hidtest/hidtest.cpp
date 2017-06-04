@@ -299,7 +299,7 @@ void joycon_deinit(hid_device *handle, const wchar_t *name)
 
 void device_print(struct hid_device_info *dev)
 {
-    printf("USB device info:\n  vid: 0x%04hX pid: 0x%04hX\n  path: %s\n  serial_number: %ls\n  interface_number: %d\n",
+    printf("USB device info:\n  vid: 0x%04hX pid: 0x%04hX\n  path: %s\n  MAC: %ls\n  interface_number: %d\n",
         dev->vendor_id, dev->product_id, dev->path, dev->serial_number, dev->interface_number);
     printf("  Manufacturer: %ls\n", dev->manufacturer_string);
     printf("  Product:      %ls\n\n", dev->product_string);
