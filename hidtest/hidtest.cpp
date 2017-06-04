@@ -209,6 +209,7 @@ void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 int joycon_init(hid_device *handle, const wchar_t *name)
 {
     unsigned char buf[0x400];
+    unsigned char sn_buffer[14] = {0x00};
     memset(buf, 0, 0x400);
     
     
@@ -227,7 +228,8 @@ int joycon_init(hid_device *handle, const wchar_t *name)
         }
         else
         {
-            printf("Found %ls, MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", name, buf[9], buf[8], buf[7], buf[6], buf[5], buf[4]);
+            printf("Found %ls, MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", name,
+                   buf[9], buf[8], buf[7], buf[6], buf[5], buf[4]);
         }
             
         // Do handshaking
@@ -267,7 +269,14 @@ int joycon_init(hid_device *handle, const wchar_t *name)
     buf[0] = 0x01; // Enabled
     joycon_send_subcommand(handle, 0x1, 0x40, buf, 1);
     
-    printf("Successfully initialized %ls!\n", name);
+    //Read device's S/N
+    spi_read(handle, 0x6002, sn_buffer, 0xE);
+    
+    printf("Successfully initialized %ls with S/N: %c%c%c%c%c%c%c%c%c%c%c%c%c%c!\n", 
+        name, sn_buffer[0], sn_buffer[1], sn_buffer[2], sn_buffer[3], 
+        sn_buffer[4], sn_buffer[5], sn_buffer[6], sn_buffer[7], sn_buffer[8], 
+        sn_buffer[9], sn_buffer[10], sn_buffer[11], sn_buffer[12], 
+        sn_buffer[13]);!\n", name);
     
     return 0;
 }
