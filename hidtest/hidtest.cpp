@@ -276,7 +276,7 @@ int joycon_init(hid_device *handle, const wchar_t *name)
         name, sn_buffer[0], sn_buffer[1], sn_buffer[2], sn_buffer[3], 
         sn_buffer[4], sn_buffer[5], sn_buffer[6], sn_buffer[7], sn_buffer[8], 
         sn_buffer[9], sn_buffer[10], sn_buffer[11], sn_buffer[12], 
-        sn_buffer[13]);!\n", name);
+        sn_buffer[13]);
     
     return 0;
 }
