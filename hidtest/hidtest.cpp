@@ -131,6 +131,10 @@ void spi_flash_dump(hid_device *handle, char *out_path)
 {
     unsigned char buf[0x400];
     uint8_t *spi_read = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
+    int safe_length = 0x10; // 512KB fits into 32768 * 16B packets
+    int fast_rate_length = 0x1D; // Max SPI data that fit into a packet is 29B. Needs removal of last 3 bytes from the dump.
+    
+    int spi_data_length = fast_rate_length;
     
     FILE *dump = fopen(out_path, "wb");
     if(dump == NULL)
@@ -140,12 +144,13 @@ void spi_flash_dump(hid_device *handle, char *out_path)
     }
     
     uint32_t* offset = (uint32_t*)(&spi_read[0x0]);
-    for(*offset = 0x0; *offset < 0x80000; *offset += 0x1C)
+    for(*offset = 0x0; *offset < 0x80000; *offset += spi_data_length)
     {
         // HACK/TODO: hid_exchange loves to return data from the wrong addr, or 0x30 (NACK?) packets
         // so let's make sure our returned data is okay before writing
         while(1)
         {
+            spi_read[0x4]=data_rate; //SPI data length request
             memcpy(buf, spi_read, 0x26);
             joycon_send_subcommand(handle, 0x1, 0x10, buf, 0x26);
             
@@ -154,7 +159,7 @@ void spi_flash_dump(hid_device *handle, char *out_path)
                 break;
         }
         
-        fwrite(buf + (0x14 + (bluetooth ? 0 : 10)) * sizeof(char), 0x1C, 1, dump);
+        fwrite(buf + (0x14 + (bluetooth ? 0 : 10)) * sizeof(char), spi_data_length, 1, dump);
         
         if((*offset & 0xFF) == 0) // less spam
             printf("\rDumped 0x%05X of 0x80000", *offset);
