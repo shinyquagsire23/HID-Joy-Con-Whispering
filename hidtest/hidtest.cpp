@@ -130,7 +130,7 @@ void joycon_send_subcommand(hid_device *handle, int command, int subcommand, uin
 void spi_flash_dump(hid_device *handle, char *out_path)
 {
     unsigned char buf[0x400];
-    uint8_t *spi_read = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
+    uint8_t *spi_read_cmd = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
     int safe_length = 0x10; // 512KB fits into 32768 * 16B packets
     int fast_rate_length = 0x1D; // Max SPI data that fit into a packet is 29B. Needs removal of last 3 bytes from the dump.
     
@@ -143,15 +143,15 @@ void spi_flash_dump(hid_device *handle, char *out_path)
         return;
     }
     
-    uint32_t* offset = (uint32_t*)(&spi_read[0x0]);
+    uint32_t* offset = (uint32_t*)(&spi_read_cmd[0x0]);
     for(*offset = 0x0; *offset < 0x80000; *offset += spi_data_length)
     {
         // HACK/TODO: hid_exchange loves to return data from the wrong addr, or 0x30 (NACK?) packets
         // so let's make sure our returned data is okay before writing
         while(1)
         {
-            spi_read[0x4]=data_rate; //SPI data length request
-            memcpy(buf, spi_read, 0x26);
+            spi_read_cmd[0x4]=data_rate; //SPI data length request
+            memcpy(buf, spi_read_cmd, 0x26);
             joycon_send_subcommand(handle, 0x1, 0x10, buf, 0x26);
             
             // sanity-check our data, loop if it's not good
@@ -192,9 +192,9 @@ void spi_write(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
 {
     unsigned char buf[0x400];
-    uint8_t *spi_read = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
-    uint32_t* offset = (uint32_t*)(&spi_read[0]);
-    uint8_t* length = (uint8_t*)(&spi_read[4]);
+    uint8_t *spi_read_cmd = (uint8_t*)calloc(1, 0x26 * sizeof(uint8_t));
+    uint32_t* offset = (uint32_t*)(&spi_read_cmd[0]);
+    uint8_t* length = (uint8_t*)(&spi_read_cmd[4]);
    
     *length = len;
     *offset = offs;
@@ -203,7 +203,7 @@ void spi_read(hid_device *handle, uint32_t offs, uint8_t *data, uint8_t len)
     do
     {
         //usleep(300000);
-        memcpy(buf, spi_read, 0x36);
+        memcpy(buf, spi_read_cmd, 0x36);
         joycon_send_subcommand(handle, 0x1, 0x10, buf, 0x26);
     }
     while(*(uint32_t*)&buf[0xF + (bluetooth ? 0 : 10)] != *offset);
