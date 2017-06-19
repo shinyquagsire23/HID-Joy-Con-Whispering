@@ -300,6 +300,11 @@ int joycon_init(hid_device *handle, const wchar_t *name)
     buf[0] = 0x01; // Enabled
     joycon_send_subcommand(handle, 0x1, 0x40, buf, 1);
     
+    // Increase data rate for Bluetooth
+    memset(buf, 0x00, 0x400);
+    buf[0] = 0x31; // Enabled
+    joycon_send_subcommand(handle, 0x1, 0x3, buf, 1);
+    
     //Read device's S/N
     spi_read(handle, 0x6002, sn_buffer, 0xE);
     
@@ -361,6 +366,8 @@ int main(int argc, char* argv[])
         dev_iter = devs;
         while(dev_iter)
         {
+            // Sometimes hid_enumerate still returns other product IDs
+            if (dev_iter->product_id != product_ids[i]) break;
             
             // break out if the current handle is already used
             if((dev_iter->product_id == JOYCON_R_BT || dev_iter->interface_number == 0) && handle_r)
