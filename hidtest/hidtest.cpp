@@ -13,6 +13,7 @@
 #define JOYCON_R_BT (0x2007)
 #define PRO_CONTROLLER (0x2009)
 #define JOYCON_CHARGING_GRIP (0x200e)
+unsigned short product_ids_size = 4;
 unsigned short product_ids[] = {JOYCON_L_BT, JOYCON_R_BT, PRO_CONTROLLER, JOYCON_CHARGING_GRIP};
 
 // Uncomment for spam or SPI dumping
@@ -301,9 +302,12 @@ int joycon_init(hid_device *handle, const wchar_t *name)
     joycon_send_subcommand(handle, 0x1, 0x40, buf, 1);
     
     // Increase data rate for Bluetooth
-    memset(buf, 0x00, 0x400);
-    buf[0] = 0x31; // Enabled
-    joycon_send_subcommand(handle, 0x1, 0x3, buf, 1);
+    if (bluetooth)
+    {
+       memset(buf, 0x00, 0x400);
+       buf[0] = 0x31; // Enabled
+       joycon_send_subcommand(handle, 0x1, 0x3, buf, 1);
+    }
     
     //Read device's S/N
     spi_read(handle, 0x6002, sn_buffer, 0xE);
@@ -360,7 +364,7 @@ int main(int argc, char* argv[])
     }
 
     // iterate thru all the valid product ids and try and initialize controllers
-    for(int i = 0; i < sizeof(product_ids); i++)
+    for(int i = 0; i < product_ids_size; i++)
     {
         devs = hid_enumerate(0x057E, product_ids[i]);
         dev_iter = devs;
