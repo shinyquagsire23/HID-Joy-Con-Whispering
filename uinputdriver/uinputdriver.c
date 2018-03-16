@@ -53,7 +53,7 @@ int joycon_bits_to_buttons_middle_left[] =
     -1,
     BTN_THUMBL,
     -1,
-    BTN_TASK,
+    BTN_Z,
     -1,
     -1,
 };
@@ -559,7 +559,6 @@ int main(void)
         
     // Buttons
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
-    ioctl(fd, UI_SET_KEYBIT, BTN_LEFT);
     ioctl(fd, UI_SET_KEYBIT, BTN_NORTH);
     ioctl(fd, UI_SET_KEYBIT, BTN_SOUTH);
     ioctl(fd, UI_SET_KEYBIT, BTN_EAST);
@@ -567,7 +566,7 @@ int main(void)
     ioctl(fd, UI_SET_KEYBIT, BTN_START);
     ioctl(fd, UI_SET_KEYBIT, BTN_SELECT);
     ioctl(fd, UI_SET_KEYBIT, BTN_MODE);
-    ioctl(fd, UI_SET_KEYBIT, BTN_TASK);
+    ioctl(fd, UI_SET_KEYBIT, BTN_Z);
     ioctl(fd, UI_SET_KEYBIT, BTN_DPAD_UP);
     ioctl(fd, UI_SET_KEYBIT, BTN_DPAD_DOWN);
     ioctl(fd, UI_SET_KEYBIT, BTN_DPAD_LEFT);
