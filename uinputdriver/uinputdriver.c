@@ -9,6 +9,7 @@
 #include <linux/input.h>
 #include <linux/uinput.h>
 #include <hidapi/hidapi.h>
+#include <libudev.h>
 
 #include <sys/time.h>
 
@@ -548,7 +549,7 @@ int main(void)
         return -1;
     }
 
-    char *uinput_path = udev_device_get_devnode(uinput);
+    const char *uinput_path = udev_device_get_devnode(uinput);
     if (uinput_path == NULL)
     {
         fprintf(stderr, "cannot find path to uinput\n");
